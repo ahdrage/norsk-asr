@@ -22,6 +22,18 @@ RunPod H100 SXM at $3.99/h. Balance before each step from `scripts/pod.sh balanc
 
 ## 2026-10-14: next round (in progress)
 
+Status (17:55 UTC):
+- Pod `0m8gb6jriql1zx` (H100) up since 17:17 UTC. It had a CUDA 12.8 driver, so torch was swapped
+  for the cu126 build of the same version (now automatic in `pod.sh setup`).
+- Data packed in 26 min: **1,679.9 h, 373,627 utterances** (Stortinget 636 shards, NST 636 shards,
+  NPSC train 32 days ≈ 100 h). Dropped: 75,706 with digits, 15,895 with whisper_wer > 0.15.
+- Training `runs/full_top1`: 10,520 steps/epoch, 52,600 steps, 0.83 audio-h/s → about 3 h.
+- Test/train overlap check (sentences of 6+ words found verbatim in training text): NPSC 40/4,771,
+  Stortinget 1/697, NST 56/1,494, FLEURS 0/357. The NPSC hits are stock Speaker's phrases
+  ("neste taler er …") and the NST hits are NST's shared reading prompts, so no leaked sessions.
+- LM text: NCC shards 1–4 (parliament, government, Wikipedia, public reports; 1990+; number-heavy
+  sentences dropped) = 8.8 M sentences, 162 M words; plus 20 M words of training transcripts.
+
 Plan, approved by the user:
 
 1. **More data.** All 636 Stortinget shards + all NST + NPSC train (Bokmål, 32 days, ~100 h):

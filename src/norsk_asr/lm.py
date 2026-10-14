@@ -42,8 +42,12 @@ def _ncc_chunk(lines: list[str]) -> list[str]:
         if (r.get("publish_year") or 0) < 1990:
             continue
         for sent in SENT_SPLIT.split(r.get("text") or ""):
+            toks = sent.split()
+            # Tables and statistics turn into long runs of spelled-out numbers: skip number-heavy text.
+            if not 3 <= len(toks) <= 50 or sum(any(c.isdigit() for c in w) for w in toks) > max(1, len(toks) // 10):
+                continue
             t = normalize(sent)
-            if len(t.split()) >= 3 and is_clean(t):
+            if 3 <= len(t.split()) <= 60 and is_clean(t):
                 out.append(t)
     return out
 
