@@ -54,12 +54,15 @@ def main():
     p.add_argument("--eval-dir", default="data/eval")
     p.add_argument("--out", default="runs/pilot")
     p.add_argument("--units", help="units.json; built from the training text if absent")
+    p.add_argument("--unit-type", choices=["chars", "pieces"], default="chars",
+                   help="chars: letters (word-initial ones carry the space); pieces: also Gemma pieces seen "
+                        ">= --min-unit-count times. Pieces stayed stuck on the CTC blank plateau in the small run.")
     p.add_argument("--min-unit-count", type=int, default=20)
     p.add_argument("--epochs", type=float, default=3)
     p.add_argument("--max-steps", type=int)
     p.add_argument("--max-batch-seconds", type=float, default=1000)
     p.add_argument("--max-utt-seconds", type=float, default=30)
-    p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--encoder-lr", type=float, default=2e-5)
     p.add_argument("--weight-decay", type=float, default=0.01)
     p.add_argument("--warmup", type=int, default=500)
@@ -88,7 +91,8 @@ def main():
     if a.units:
         units = Units.load(Path(a.units))
     else:
-        units = Units.build((r["text"] for r in train.rows), ModelConfig.encoder_id, a.min_unit_count)
+        min_count = a.min_unit_count if a.unit_type == "pieces" else None
+        units = Units.build((r["text"] for r in train.rows), ModelConfig.encoder_id, min_count)
     units.save(out / "units.json")
     targets = [units.encode(r["text"]) for r in train.rows]
     # CTC needs at least one frame per unit (plus blanks between repeats); 25 frames/s.

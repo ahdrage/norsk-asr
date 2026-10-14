@@ -1,4 +1,7 @@
-"""CTC output units: a subset of Gemma tokenizer pieces chosen from Norwegian training text.
+"""CTC output units: Gemma tokenizer pieces, by default only the single-character ones.
+
+Character units are the default: with ~1,800 multi-character pieces the small run stayed on the
+CTC blank plateau, while characters learned within a few hundred steps.
 
 Keeping Gemma pieces (rather than a new SentencePiece model) lets the output head start from
 EmbeddingGemma's text embeddings for the same pieces, as QUAN-Transcribe does (`head_init: text`).
@@ -56,12 +59,14 @@ class Units:
         return cls(d["pieces"], d["gemma_ids"], d["model_id"])
 
     @classmethod
-    def build(cls, texts, model_id: str, min_count: int = 5) -> "Units":
+    def build(cls, texts, model_id: str, min_count: int | None = None) -> "Units":
+        """Character pieces, plus Gemma pieces seen at least `min_count` times (None: characters only)."""
         tok = AutoTokenizer.from_pretrained(model_id)
-        counts = collections.Counter()
-        for text in texts:
-            counts.update(tok.tokenize(" " + text))
         chars = cls.char_pieces()
+        counts = collections.Counter()
+        if min_count is not None:
+            for text in texts:
+                counts.update(tok.tokenize(" " + text))
         kept = sorted({p for p, n in counts.items() if n >= min_count} | set(chars))
         vocab = tok.get_vocab()
         kept = [p for p in kept if p in vocab]
