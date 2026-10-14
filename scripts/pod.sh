@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Manage a RunPod GPU pod for training. Secrets live in ~/.config/norsk-asr/env:
-#   RUNPOD_API_KEY=...   HF_TOKEN=...
+#   RUNPOD_API_KEY=...   HUGGINGFACE_TOKEN=...
 #
 #   scripts/pod.sh create [gpu_type] [gpu_count]   # default: one H100 SXM
+#   scripts/pod.sh setup                           # sync code, install deps, log in to the Hub
 #   scripts/pod.sh status | ssh | sync | stop | delete
 #
 # The pod id is kept in ~/.config/norsk-asr/pod_id. Always `delete` when done: a stopped pod
@@ -66,9 +67,21 @@ EOF
   sync)
     # Code only; data is prepared on the pod from the Hub, and eval sets are small enough to copy.
     read -r ip port < <(ssh_target)
-    rsync -az --delete -e "ssh -i $KEY -p $port -o StrictHostKeyChecking=accept-new" \
+    rsync -rlptz --delete --no-owner --no-group -e "ssh -i $KEY -p $port -o StrictHostKeyChecking=accept-new" \
       --exclude .venv --exclude data --exclude runs --exclude scratch --exclude __pycache__ \
-      "$REPO/" "root@$ip:/workspace/norsk-asr/"
+      "$REPO/" "root@$ip:/root/work/norsk-asr/"
+    ;;
+  setup)
+    "$0" ssh 'command -v rsync >/dev/null || (apt-get update -qq && apt-get install -y -qq rsync >/dev/null)'
+    "$0" sync
+    # The token goes over SSH stdin into the Hub's token file, not into the pod's env config.
+    printf '%s' "$HUGGINGFACE_TOKEN" | "$0" ssh 'mkdir -p ~/.cache/huggingface && cat > ~/.cache/huggingface/token && chmod 600 ~/.cache/huggingface/token'
+    "$0" ssh 'set -e
+      nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+      command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null
+      export PATH=$HOME/.local/bin:$PATH UV_CACHE_DIR=/root/work/.uv-cache HF_HOME=/root/work/.hf
+      mkdir -p $HF_HOME && cp ~/.cache/huggingface/token $HF_HOME/token
+      cd /root/work/norsk-asr && uv sync -q && uv run python -c "import torch; print(\"torch\", torch.__version__, \"cuda ok:\", torch.cuda.is_available())"'
     ;;
   stop)
     api -X POST "$API/pods/$(pod_id)/stop" && echo "stopped $(pod_id)"
