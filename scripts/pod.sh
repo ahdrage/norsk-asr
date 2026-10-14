@@ -73,11 +73,11 @@ EOF
     # Code only; data is prepared on the pod from the Hub, and eval sets are small enough to copy.
     read -r ip port < <(ssh_target)
     rsync -rlptz --delete --no-owner --no-group -e "ssh -i $KEY -p $port -o StrictHostKeyChecking=accept-new" \
-      --exclude .venv --exclude data --exclude runs --exclude results --exclude scratch --exclude __pycache__ \
+      --exclude .venv --exclude data --exclude runs --exclude results --exclude logs --exclude scratch --exclude __pycache__ \
       "$REPO/" "root@$ip:/root/work/norsk-asr/"
     ;;
   setup)
-    "$0" ssh 'command -v rsync >/dev/null || (apt-get update -qq && apt-get install -y -qq rsync >/dev/null)'
+    "$0" ssh 'mkdir -p /root/work/norsk-asr; command -v rsync >/dev/null || (apt-get update -qq && apt-get install -y -qq rsync >/dev/null)'
     "$0" sync
     # The token goes over SSH stdin into the Hub's token file, not into the pod's env config.
     printf '%s' "$HUGGINGFACE_TOKEN" | "$0" ssh 'mkdir -p ~/.cache/huggingface && cat > ~/.cache/huggingface/token && chmod 600 ~/.cache/huggingface/token'
@@ -86,7 +86,14 @@ EOF
       command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null
       export PATH=$HOME/.local/bin:$PATH UV_CACHE_DIR=/root/work/.uv-cache HF_HOME=/root/work/.hf
       mkdir -p $HF_HOME && cp ~/.cache/huggingface/token $HF_HOME/token
-      cd /root/work/norsk-asr && uv sync -q && uv run python -c "import torch; print(\"torch\", torch.__version__, \"cuda ok:\", torch.cuda.is_available())"'
+      cd /root/work/norsk-asr && uv sync -q
+      # Pods with a CUDA 12.x driver cannot run the locked cu130 build; swap in the cu126 build of the
+      # same torch version. Run scripts set UV_NO_SYNC=1 so `uv run` keeps it.
+      if ! uv run python -c "import torch, sys; sys.exit(not torch.cuda.is_available())" 2>/dev/null; then
+        v=$(uv run python -c "import torch; print(torch.__version__.split(\"+\")[0])")
+        uv pip install -q --python .venv/bin/python "torch==$v+cu126" --index-url https://download.pytorch.org/whl/cu126
+      fi
+      UV_NO_SYNC=1 uv run python -c "import torch; print(\"torch\", torch.__version__, \"cuda ok:\", torch.cuda.is_available())"'
     ;;
   stop)
     api -X POST "$API/pods/$(pod_id)/stop" && echo "stopped $(pod_id)"

@@ -2,7 +2,7 @@
 # After the pilot: evaluate both runs on the same subsets as the NB-Whisper baseline
 # (--limit 1000, same sampling seed) and upload the runs to the private Hub repo.
 set -euo pipefail
-export PATH=$HOME/.local/bin:$PATH UV_CACHE_DIR=/root/work/.uv-cache HF_HOME=/root/work/.hf
+export PATH=$HOME/.local/bin:$PATH UV_CACHE_DIR=/root/work/.uv-cache HF_HOME=/root/work/.hf UV_NO_SYNC=1
 cd /root/work/norsk-asr
 
 [ -f results/nb-whisper-large/summary.json ] || uv run python -m norsk_asr.baseline --model NbAiLab/nb-whisper-large \

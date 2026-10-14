@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 import jiwer
+import numpy as np
 import torch
 
 from .data import SR, PackedSet, bucket_batches, collate
@@ -37,7 +38,10 @@ def score(refs: list[str], hyps: list[str], digits: list[bool]) -> dict:
 
 
 @torch.no_grad()
-def evaluate_set(model, units: Units, ds: PackedSet, device, max_batch_seconds: float = 600) -> tuple[dict, list[dict]]:
+def evaluate_set(
+    model, units: Units, ds: PackedSet, device, max_batch_seconds: float = 600, dump: dict | None = None
+) -> tuple[dict, list[dict]]:
+    """Greedy decode one set. If `dump` is a dict, per-utterance log-probs [T, V] (float16) go into it."""
     model.eval()
     hyps = {}
     t0 = time.time()
@@ -47,6 +51,9 @@ def evaluate_set(model, units: Units, ds: PackedSet, device, max_batch_seconds: 
             lp, olens = model(b["wav"].to(device, non_blocking=True), b["lengths"].to(device))
         for i, ids in zip(idx, greedy(lp, olens)):
             hyps[i] = units.decode(ids)
+        if dump is not None:
+            for j, i in enumerate(idx):
+                dump[ds.rows[i]["id"]] = lp[j, : olens[j]].half().cpu().numpy()
     if device.type == "cuda":
         torch.cuda.synchronize()
     wall = time.time() - t0
@@ -56,7 +63,10 @@ def evaluate_set(model, units: Units, ds: PackedSet, device, max_batch_seconds: 
     res = score(refs, hyp, [ds.rows[i].get("has_digits", False) for i in order])
     res["speed_x"] = ds.hours() * 3600 / wall
     model.train()
-    return res, [{"id": ds.rows[i]["id"], "ref": refs[i], "hyp": hyp[i]} for i in order]
+    return res, [
+        {"id": ds.rows[i]["id"], "ref": refs[i], "hyp": hyp[i], "has_digits": ds.rows[i].get("has_digits", False)}
+        for i in order
+    ]
 
 
 def load_eval_sets(eval_dir: Path, names: list[str] | None, limit: int | None) -> dict[str, PackedSet]:
@@ -77,12 +87,14 @@ def main():
     p.add_argument("--sets", nargs="*")
     p.add_argument("--limit", type=int)
     p.add_argument("--out")
+    p.add_argument("--dump-logprobs", action="store_true", help="also save <out>/<set>.logprobs.npz for LM decoding")
     a = p.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, units = load_checkpoint(a.ckpt, device)
     results = {}
     for name, ds in load_eval_sets(a.eval_dir, a.sets, a.limit).items():
-        res, rows = evaluate_set(model, units, ds, device)
+        dump = {} if a.dump_logprobs else None
+        res, rows = evaluate_set(model, units, ds, device, dump=dump)
         results[name] = res
         print(name, json.dumps(res), flush=True)
         if a.out:
@@ -90,6 +102,8 @@ def main():
             with open(Path(a.out) / f"{name}.jsonl", "w") as f:
                 for r in rows:
                     f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            if dump is not None:
+                np.savez(Path(a.out) / f"{name}.logprobs.npz", **dump)
     if a.out:
         (Path(a.out) / "summary.json").write_text(json.dumps(results, indent=1))
 

@@ -3,7 +3,7 @@
 # runs side by side on one GPU: A keeps the encoder frozen, B unfreezes the top encoder layer
 # after 2000 steps. Usage: scripts/run_pilot.sh prep | train
 set -euo pipefail
-export PATH=$HOME/.local/bin:$PATH UV_CACHE_DIR=/root/work/.uv-cache HF_HOME=/root/work/.hf
+export PATH=$HOME/.local/bin:$PATH UV_CACHE_DIR=/root/work/.uv-cache HF_HOME=/root/work/.hf UV_NO_SYNC=1
 cd /root/work/norsk-asr
 mkdir -p /root/work/logs
 W=$(python3 -c "import os; q=open('/sys/fs/cgroup/cpu.max').read().split(); print(int(q[0])//int(q[1]) if q[0]!='max' else os.cpu_count())")
