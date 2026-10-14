@@ -68,7 +68,7 @@ EOF
     # Code only; data is prepared on the pod from the Hub, and eval sets are small enough to copy.
     read -r ip port < <(ssh_target)
     rsync -rlptz --delete --no-owner --no-group -e "ssh -i $KEY -p $port -o StrictHostKeyChecking=accept-new" \
-      --exclude .venv --exclude data --exclude runs --exclude scratch --exclude __pycache__ \
+      --exclude .venv --exclude data --exclude runs --exclude results --exclude scratch --exclude __pycache__ \
       "$REPO/" "root@$ip:/root/work/norsk-asr/"
     ;;
   setup)
