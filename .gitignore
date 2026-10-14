@@ -1,0 +1,7 @@
+.venv/
+data/
+runs/
+results/
+scratch/
+__pycache__/
+*.pt

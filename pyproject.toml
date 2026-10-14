@@ -1,0 +1,23 @@
+[project]
+name = "norsk-asr"
+version = "0.1.0"
+description = "Norwegian CTC speech recognition on the EmbeddingGemma 2 audio encoder"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=1.15.0",
+    "datasets>=3",
+    "huggingface-hub>=2.2.0",
+    "jiwer>=4.0.0",
+    "librosa>=1.0.0",
+    "num2words>=0.5.14",
+    "safetensors>=0.8.0",
+    "sentencepiece>=0.2.2",
+    "soundfile>=0.14.0",
+    "torch>=2.5",
+    "transformers>=5.19",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
