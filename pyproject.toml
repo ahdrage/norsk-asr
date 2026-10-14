@@ -18,6 +18,17 @@ dependencies = [
     "transformers>=5.19",
 ]
 
+[project.optional-dependencies]
+# Beam search with a KenLM language model. kenlm builds from source (needs a C++ compiler).
+lm = ["kenlm", "pyctcdecode>=0.5.0"]
+
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+# pyctcdecode pins numpy<2 but works with numpy 2; librosa needs numpy>=2.
+override-dependencies = ["numpy>=2.1"]
+
+[tool.uv.sources]
+kenlm = { url = "https://github.com/kpu/kenlm/archive/master.zip" }

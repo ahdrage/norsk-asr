@@ -2,9 +2,9 @@
 # Manage a RunPod GPU pod for training. Secrets live in ~/.config/norsk-asr/env:
 #   RUNPOD_API_KEY=...   HUGGINGFACE_TOKEN=...
 #
-#   scripts/pod.sh create [gpu_type] [gpu_count]   # default: one H100 SXM
+#   [DISK_GB=300] scripts/pod.sh create [gpu_type] [gpu_count]   # default: one H100 SXM, 50 GB disk
 #   scripts/pod.sh setup                           # sync code, install deps, log in to the Hub
-#   scripts/pod.sh status | ssh | sync | stop | delete
+#   scripts/pod.sh status | ssh | sync | stop | delete | balance
 #
 # The pod id is kept in ~/.config/norsk-asr/pod_id. Always `delete` when done: a stopped pod
 # still bills for its volume, and a running one bills per second.
@@ -35,7 +35,7 @@ case "${1:-}" in
   create)
     gpu="${2:-NVIDIA H100 80GB HBM3}"
     count="${3:-1}"
-    body=$(python3 - "$gpu" "$count" <<'EOF'
+    body=$(python3 - "$gpu" "$count" "${DISK_GB:-50}" <<'EOF'
 import json, os, sys
 print(json.dumps({
     "name": "norsk-asr",
@@ -43,7 +43,7 @@ print(json.dumps({
     "gpuTypeIds": [sys.argv[1]],
     "gpuCount": int(sys.argv[2]),
     "cloudType": "SECURE",
-    "containerDiskInGb": 50,
+    "containerDiskInGb": int(sys.argv[3]),  # local disk under /root; /workspace is slow network storage
     "volumeInGb": 200,
     "volumeMountPath": "/workspace",
     "ports": ["22/tcp"],
@@ -55,6 +55,11 @@ EOF
 )
     api -X POST "$API/pods" -d "$body" | tee /dev/stderr | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' > "$CONF/pod_id"
     echo "created pod $(pod_id)"
+    ;;
+  balance)
+    curl -fsS -X POST "https://api.runpod.io/graphql" -H "Authorization: Bearer $RUNPOD_API_KEY" \
+      -H "Content-Type: application/json" -d '{"query":"query { myself { clientBalance currentSpendPerHr } }"}' |
+      python3 -c 'import json,sys; m=json.load(sys.stdin)["data"]["myself"]; print("balance $%.2f, spending $%.2f/h" % (m["clientBalance"], m["currentSpendPerHr"]))'
     ;;
   status)
     api "$API/pods/$(pod_id)" | python3 -m json.tool
