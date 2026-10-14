@@ -5,3 +5,4 @@ results/
 scratch/
 __pycache__/
 *.pt
+logs

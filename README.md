@@ -4,10 +4,10 @@ Fast Norwegian speech-to-text built on the audio encoder of
 [google/embeddinggemma-2](https://huggingface.co/google/embeddinggemma-2) (Apache 2.0), following
 the recipe of [QUAN-Transcribe-1.0](https://huggingface.co/qnguyen3/QUAN-Transcribe-1.0):
 
-- the 12-layer Gemma 4 audio conformer (25 frames/s), with only the top 2 layers trainable;
+- the 12-layer Gemma 4 audio conformer (25 frames/s), frozen or with only the top layer trainable;
 - a learned softmax mix over all 13 hidden states;
 - a 6-layer conformer reader (d=768) trained with CTC, in one pass with no autoregressive decoding;
-- output units are a Norwegian subset of Gemma tokenizer pieces, with the head initialised from
+- output units are Gemma's single-character pieces (83 units), with the head initialised from
   EmbeddingGemma's text embeddings.
 
 The bar to beat is [NB-Whisper](https://huggingface.co/NbAiLab/nb-whisper-large).
@@ -21,6 +21,21 @@ The bar to beat is [NB-Whisper](https://huggingface.co/NbAiLab/nb-whisper-large)
 - Training utterances whose transcripts contain digits are dropped (27% of Stortinget), since we
   can't know how the numbers were spoken. Eval reports `wer` on everything and `wer_nodigit` on
   digit-free utterances; `wer_nodigit` is the fair comparison.
+
+## Pilot results
+
+465 h of training data (100 Stortinget shards plus all of NST), 6 epochs, one H100, about 3 h of
+GPU time and about $13. Scores are WER on digit-free utterances, using greedy CTC on the same
+1,000-utterance subsets (FLEURS has 357). The checkpoints are in the private Hub repo
+`ahdrage/norsk-asr`.
+
+| Model | FLEURS | NPSC | NST | Stortinget | Speed (× real time) |
+|---|---|---|---|---|---|
+| NB-Whisper large | 4.2 | 16.5 | 2.0 | 9.0 | 40–90 |
+| `pilot_frozen` (encoder frozen) | 18.8 | 28.9 | 12.4 | 24.4 | ~2,400 |
+| `pilot_top1` (top encoder layer trained) | **17.8** | **28.1** | **11.8** | **23.2** | ~2,500 |
+
+Both runs were still improving at the end. `pilot_top1` beats the frozen run on every set.
 
 ## Layout
 
