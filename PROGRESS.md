@@ -10,6 +10,7 @@ the same subsets as the NB-Whisper baseline (1,000 utterances per set; FLEURS ha
 | NB-Whisper large | ~66k h | 4.2 | 16.5 | 2.0 | 9.0 | 40–90× real time |
 | pilot_frozen | 465 h | 18.8 | 28.9 | 12.4 | 24.4 | encoder frozen |
 | pilot_top1 | 465 h | 17.8 | 28.1 | 11.8 | 23.2 | top encoder layer trained, ~2,500× real time |
+| pilot_top1 + 4-gram LM | 465 h | 12.8 | 20.3 | 7.0 | 16.5 | beam 32, α=0.5 β=2.0 (tuned on dev); 26 s on 8 CPU cores for all four sets |
 
 ## Spend
 
@@ -33,6 +34,14 @@ Status (17:55 UTC):
   ("neste taler er …") and the NST hits are NST's shared reading prompts, so no leaked sessions.
 - LM text: NCC shards 1–4 (parliament, government, Wikipedia, public reports; 1990+; number-heavy
   sentences dropped) = 8.8 M sentences, 162 M words; plus 20 M words of training transcripts.
+
+LM results (pilot model, 20:15 UTC):
+- `data/lm/no4.bin`: 4-gram, 3- and 4-gram singletons pruned, 406 MB; 8.57 M sentences after
+  removing 16,312 that share an 8-gram with eval/dev references and 643,850 duplicates; 918k
+  unigrams. Built on the NUC in ~6 min.
+- Grid on dev (FLEURS dev + 1,000 NPSC eval-split utts), beam 32: best α=0.5, β=2.0
+  (avg 16.5% vs 23.3% greedy). Log: `logs/lm_tune_pilot.log`.
+- On the test sets the LM cuts WER by 28–40% relative (scoreboard).
 
 Plan, approved by the user:
 
