@@ -11,6 +11,8 @@ the same subsets as the NB-Whisper baseline (1,000 utterances per set; FLEURS ha
 | pilot_frozen | 465 h | 18.8 | 28.9 | 12.4 | 24.4 | encoder frozen |
 | pilot_top1 | 465 h | 17.8 | 28.1 | 11.8 | 23.2 | top encoder layer trained, ~2,500× real time |
 | pilot_top1 + 4-gram LM | 465 h | 12.8 | 20.3 | 7.0 | 16.5 | beam 32, α=0.5 β=2.0 (tuned on dev); 26 s on 8 CPU cores for all four sets |
+| full_top1 | 1,680 h | 15.2 | 12.9 | 8.9 | 15.3 | greedy; 1,000–1,650× real time on one H100 |
+| **full_top1 + 4-gram LM** | 1,680 h | **10.0** | **9.7** | **5.6** | **12.2** | beam 64, α=0.6 β=1.0 (tuned on dev); ~1,500× real time on 8 CPU cores |
 
 ## Spend
 
@@ -20,8 +22,24 @@ RunPod H100 SXM at $3.99/h. Balance before each step from `scripts/pod.sh balanc
 |---|---|---|---|---|
 | 2026-10-14 | small run + pilot (two runs) + NB-Whisper baseline | ~3.2 h | ~$13 | – |
 | 2026-10-14 | (credits added) | | | $46.20 |
+| 2026-10-14 | full round: pack 1,680 h + train full_top1 + evals (pod 17:17–21:07 UTC) | 3.8 h | $15.38 | $30.82 |
 
-## 2026-10-14: next round (in progress)
+## 2026-10-14: full round, results
+
+- `full_top1` trained 52,600 steps (5 epochs) with no skipped steps; best checkpoint at the end
+  (avg greedy WER 13.1% on the 500-utt checks). Uploaded to `ahdrage/norsk-asr` (`runs/full_top1`,
+  `results/full_top1`); the LM is in `lm/`.
+- LM retuned on the new model's dev outputs (`logs/lm_tune_full.log`): α=0.6, β=1.0, beam 64.
+  The LM still cuts WER by 20–37% relative.
+- **NPSC is a style win, not an accuracy win.** NB-Whisper's 16.5% is mostly deletions (1,801 vs
+  our 613): it drops fillers ("og", "så", "jo", "president") and standardizes forms ("regjeringa" →
+  "regjeringen", "meiner" → "mener"), because it writes clean subtitle-style text and NPSC is
+  verbatim. Substitutions are about equal (1,011 vs 1,060).
+- Per-error-type (% of reference words, digit-free; NB-Whisper vs ours + LM):
+  Stortinget sub 3.4 vs 5.3, del 2.9 vs 4.1, ins 2.7 vs 2.8; FLEURS sub 3.0 vs 7.3;
+  NST sub 1.6 vs 4.1. On genuinely misheard words NB-Whisper is 1.5–2.5× better outside NPSC.
+
+## 2026-10-14: next round (setup notes)
 
 Status (17:55 UTC):
 - Pod `0m8gb6jriql1zx` (H100) up since 17:17 UTC. It had a CUDA 12.8 driver, so torch was swapped

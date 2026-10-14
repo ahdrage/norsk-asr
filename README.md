@@ -37,6 +37,17 @@ GPU time and about $13. Scores are WER on digit-free utterances, using greedy CT
 
 Both runs were still improving at the end. `pilot_top1` beats the frozen run on every set.
 
+Full open-data run (1,680 h: all Stortinget + NST + NPSC train) and a word 4-gram LM:
+
+| Model | FLEURS | NPSC | NST | Stortinget |
+|---|---|---|---|---|
+| NB-Whisper large | 4.2 | 16.5 | 2.0 | 9.0 |
+| `full_top1`, greedy | 15.2 | 12.9 | 8.9 | 15.3 |
+| `full_top1` + 4-gram LM | **10.0** | **9.7** | **5.6** | **12.2** |
+
+The NPSC lead is mostly transcription style (NB-Whisper drops verbatim fillers), not better
+recognition. See `PROGRESS.md` for the full log, error breakdown and spend.
+
 ## Layout
 
 | Path | What |
