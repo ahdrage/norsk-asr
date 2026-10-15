@@ -46,10 +46,13 @@ def load_audio(path: str) -> np.ndarray:
         import imageio_ffmpeg
 
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    raw = subprocess.run(
+    proc = subprocess.run(
         [ffmpeg, "-nostdin", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"],
-        check=True, capture_output=True,
-    ).stdout
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg could not read {path}: {proc.stderr.decode(errors='replace').strip()}")
+    raw = proc.stdout
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
 
@@ -108,7 +111,7 @@ def main():
 
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("files", nargs="+")
-    p.add_argument("--ckpt", default="runs/full_top1/best.pt")
+    p.add_argument("--ckpt", default="runs/full_top1", help="run directory (model.safetensors + config.json) or a .pt")
     p.add_argument("--lm", default="data/lm/no4", help="KenLM prefix (<lm>.bin + <lm>.unigrams.txt)")
     p.add_argument("--no-lm", action="store_true", help="greedy decoding only")
     p.add_argument("--alpha", type=float, default=0.6)
@@ -131,6 +134,9 @@ def main():
         decoder = make_decoder(a.lm, ctc_labels(units), a.alpha, a.beta)
     print(f"loaded model on {device} in {time.time() - t0:.1f}s", file=sys.stderr)
 
+    missing = [f for f in a.files if not Path(f).is_file()]
+    if missing:
+        sys.exit(f"no such file: {', '.join(missing)}")
     for path in a.files:
         t0 = time.time()
         audio = load_audio(path)

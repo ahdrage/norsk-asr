@@ -3,6 +3,8 @@ name = "norsk-asr"
 version = "0.1.0"
 description = "Norwegian CTC speech recognition on the EmbeddingGemma 2 audio encoder"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "accelerate>=1.15.0",

@@ -4,6 +4,8 @@
 
 Checkpoints hold only trainable weights (reader, layer mix, head, top encoder layers); the
 frozen encoder is reloaded from the Hub, so a checkpoint is ~300 MB instead of ~1.3 GB.
+`export_checkpoint` turns a .pt into model.safetensors + config.json for publishing;
+`load_checkpoint` reads either form.
 """
 
 import argparse
@@ -29,8 +31,32 @@ def save_checkpoint(path: Path, model: CTCModel, units: Units, step: int, extra:
     torch.save({"config": model.cfg.to_dict(), "units": {"pieces": units.pieces, "gemma_ids": units.gemma_ids, "model_id": units.model_id}, "state": state, "step": step, **extra}, path)
 
 
+def export_checkpoint(pt_path: Path, out_dir: Path) -> None:
+    """Write <out_dir>/model.safetensors (weights) and config.json (everything else)."""
+    from safetensors.torch import save_file
+
+    ck = torch.load(pt_path, map_location="cpu", weights_only=True)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    save_file({k: v.contiguous().clone() for k, v in ck.pop("state").items()}, out_dir / "model.safetensors")
+    (out_dir / "config.json").write_text(json.dumps(ck, indent=1, ensure_ascii=False))
+
+
+def read_checkpoint(path) -> dict:
+    """A checkpoint dict from a .pt file, or from a directory / .safetensors file with config.json beside it."""
+    path = Path(path)
+    if path.suffix == ".pt":
+        return torch.load(path, map_location="cpu", weights_only=True)
+    from safetensors.torch import load_file
+
+    d = path if path.is_dir() else path.parent
+    ck = json.loads((d / "config.json").read_text())
+    ck["state"] = load_file(d / "model.safetensors")
+    return ck
+
+
 def load_checkpoint(path, device) -> tuple[CTCModel, Units]:
-    ck = torch.load(path, map_location="cpu", weights_only=False)
+    ck = read_checkpoint(path)
     cfg = ModelConfig(**{f.name: ck["config"][f.name] for f in fields(ModelConfig) if f.name in ck["config"]})
     u = ck["units"]
     units = Units(u["pieces"], u["gemma_ids"], u["model_id"])

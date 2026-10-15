@@ -1,111 +1,113 @@
 # norsk-asr
 
-Fast Norwegian speech-to-text built on the audio encoder of
-[google/embeddinggemma-2](https://huggingface.co/google/embeddinggemma-2) (Apache 2.0), following
-the recipe of [QUAN-Transcribe-1.0](https://huggingface.co/qnguyen3/QUAN-Transcribe-1.0):
+Fast Norwegian (Bokmål) speech-to-text built on the audio encoder of
+[google/embeddinggemma-2](https://huggingface.co/google/embeddinggemma-2), following the recipe of
+[QUAN-Transcribe-1.0](https://huggingface.co/qnguyen3/QUAN-Transcribe-1.0), trained only on open
+data. Model and language model: [huggingface.co/ahdrage/norsk-asr](https://huggingface.co/ahdrage/norsk-asr).
 
-- the 12-layer Gemma 4 audio conformer (25 frames/s), frozen or with only the top layer trainable;
+- the 12-layer Gemma 4 audio conformer (25 frames/s), with only the top layer trained;
 - a learned softmax mix over all 13 hidden states;
 - a 6-layer conformer reader (d=768) trained with CTC, in one pass with no autoregressive decoding;
 - output units are Gemma's single-character pieces (83 units), with the head initialised from
-  EmbeddingGemma's text embeddings.
+  EmbeddingGemma's text embeddings;
+- optional beam search with a word 4-gram KenLM language model.
 
+It runs at ~1,000–1,600× real time on one H100 (greedy) and ~10× real time on a laptop-class CPU.
 The bar to beat is [NB-Whisper](https://huggingface.co/NbAiLab/nb-whisper-large).
 
-## Pilot scope
+## Results
 
-- Target text is raw: lowercase, no punctuation, numbers as words. Readable output comes later.
-- Recordings only, so the reader uses full attention. There is no streaming mode.
-- Open data only: the NbAiLab Stortinget and NST sets (CC0 / Apache 2.0). Test sets are FLEURS
-  nb_no, NPSC Bokmål test, Stortinget validation (clean) and NST validation.
-- Training utterances whose transcripts contain digits are dropped (27% of Stortinget), since we
-  can't know how the numbers were spoken. Eval reports `wer` on everything and `wer_nodigit` on
-  digit-free utterances; `wer_nodigit` is the fair comparison.
+WER (%) on digit-free utterances; the same 1,000-utterance subsets for every model (FLEURS has 357).
 
-## Pilot results
-
-465 h of training data (100 Stortinget shards plus all of NST), 6 epochs, one H100, about 3 h of
-GPU time and about $13. Scores are WER on digit-free utterances, using greedy CTC on the same
-1,000-utterance subsets (FLEURS has 357). The checkpoints are in the private Hub repo
-`ahdrage/norsk-asr`.
-
-| Model | FLEURS | NPSC | NST | Stortinget | Speed (× real time) |
+| Model | Training data | FLEURS | NPSC | NST | Stortinget |
 |---|---|---|---|---|---|
-| NB-Whisper large | 4.2 | 16.5 | 2.0 | 9.0 | 40–90 |
-| `pilot_frozen` (encoder frozen) | 18.8 | 28.9 | 12.4 | 24.4 | ~2,400 |
-| `pilot_top1` (top encoder layer trained) | **17.8** | **28.1** | **11.8** | **23.2** | ~2,500 |
+| NB-Whisper large | ~66k h | **4.2** | 16.5 | **2.0** | **9.0** |
+| `pilot_top1`, greedy | 465 h | 17.8 | 28.1 | 11.8 | 23.2 |
+| `full_top1`, greedy | 1,680 h | 15.2 | 12.9 | 8.9 | 15.3 |
+| `full_top1` + 4-gram LM | 1,680 h | 10.0 | **9.7** | 5.6 | 12.2 |
 
-Both runs were still improving at the end. `pilot_top1` beats the frozen run on every set.
+The NPSC lead is mostly transcription style, not better recognition: NB-Whisper writes clean text
+and drops verbatim fillers, which NPSC's references keep. Counting only misheard words,
+NB-Whisper is 1.5–2.5× better on the other sets. [`PROGRESS.md`](PROGRESS.md) has the full log,
+error breakdown and costs.
 
-Full open-data run (1,680 h: all Stortinget + NST + NPSC train) and a word 4-gram LM:
+Scope and caveats:
 
-| Model | FLEURS | NPSC | NST | Stortinget |
-|---|---|---|---|---|
-| NB-Whisper large | 4.2 | 16.5 | 2.0 | 9.0 |
-| `full_top1`, greedy | 15.2 | 12.9 | 8.9 | 15.3 |
-| `full_top1` + 4-gram LM | **10.0** | **9.7** | **5.6** | **12.2** |
-
-The NPSC lead is mostly transcription style (NB-Whisper drops verbatim fillers), not better
-recognition. See `PROGRESS.md` for the full log, error breakdown and spend.
-
-## Layout
-
-| Path | What |
-|---|---|
-| `src/norsk_asr/text.py` | normalization used for targets and scoring |
-| `src/norsk_asr/units.py` | Gemma-piece CTC vocabulary |
-| `src/norsk_asr/features.py` | GPU log-mel matching `Gemma4AudioFeatureExtractor` (max diff 2e-5) |
-| `src/norsk_asr/model.py` | encoder + layer mix + reader + head |
-| `src/norsk_asr/prep.py` | download and pack data into int16 PCM shards |
-| `src/norsk_asr/train.py` | training loop |
-| `src/norsk_asr/evaluate.py` | greedy CTC decoding and WER |
-| `src/norsk_asr/baseline.py` | NB-Whisper on the same sets |
-| `scripts/pod.sh` | RunPod pod lifecycle |
-
-## Running
-
-```bash
-uv sync
-uv run python -m norsk_asr.prep eval --out data/eval
-uv run python -m norsk_asr.prep train --out data/train --stortinget-shards 100 --workers 16
-uv run python -m norsk_asr.train --train-dir data/train --eval-dir data/eval --out runs/pilot
-uv run python -m norsk_asr.evaluate --ckpt runs/pilot/best.pt --out results/pilot
-uv run python -m norsk_asr.baseline --model NbAiLab/nb-whisper-large --out results/nb-whisper-large
-```
+- Output is raw: lowercase, no punctuation, numbers as words.
+- Recordings only (no streaming).
+- Training utterances whose transcripts contain digits are dropped (27% of Stortinget), since we
+  can't know how the numbers were spoken; for the same reason scores use digit-free utterances.
+- Test sets: FLEURS nb_no test, NPSC Bokmål test, Stortinget validation (clean), NST validation.
+  About 70% of the test audio is parliament speech; none is broadcast, conversational or noisy.
 
 ## Transcribing a file
 
 ```bash
-uv sync --extra lm        # KenLM bindings for beam search (needs a C++ compiler)
+uv sync --extra lm                                   # KenLM bindings for beam search (needs a C++ compiler)
+uv run --extra lm python -m norsk_asr.download       # model + LM from the Hub (~850 MB)
 uv run --extra lm python -m norsk_asr.transcribe opptak.mp3                    # print the transcript
 uv run --extra lm python -m norsk_asr.transcribe opptak.m4a --timestamps --out opptak.txt
 uv run --extra lm python -m norsk_asr.transcribe *.wav --out transkripsjoner/  # many files
 uv run python -m norsk_asr.transcribe opptak.wav --no-lm                       # greedy, no KenLM
 ```
 
-Defaults are `runs/full_top1/best.pt` and the LM `data/lm/no4` (both in the private Hub repo
-`ahdrage/norsk-asr` under `runs/full_top1/` and `lm/`). Any length and any format ffmpeg reads;
-long audio is cut at quiet points into pieces of at most 25 s. On the NUC's CPU it runs at about
-10× real time (a one-hour file in ~6 min); on a GPU the model runs 1,000×+ and beam search
-dominates.
+Any length and any format ffmpeg reads (a bundled ffmpeg is used if none is installed). Long audio
+is cut at quiet points into pieces of at most 25 s. The first run also downloads the
+EmbeddingGemma 2 encoder (1.5 GB). Always pass `--extra lm` to `uv run`, or uv removes KenLM.
 
 ### On a Mac
 
-Apple Silicon and macOS 14+ (torch has no Intel-Mac builds). About 2.4 GB of downloads.
+Apple Silicon and macOS 14+ (torch has no Intel-Mac builds).
 
 ```bash
-xcode-select --install                     # C++ compiler, to build KenLM's Python bindings (once)
+xcode-select --install                    # C++ compiler for KenLM's Python bindings (once)
 curl -LsSf https://astral.sh/uv/install.sh | sh
-gh repo clone ahdrage/norsk-asr && cd norsk-asr
+git clone https://github.com/ahdrage/norsk-asr.git && cd norsk-asr
 uv sync --extra lm
-uv run --extra lm hf auth login            # a Hub token that can read ahdrage/norsk-asr
-uv run --extra lm python -m norsk_asr.download      # model + LM from the Hub (~850 MB)
+uv run --extra lm python -m norsk_asr.download
 uv run --extra lm python -m norsk_asr.transcribe ~/Downloads/opptak.m4a --timestamps
 ```
 
-The first run also downloads the EmbeddingGemma 2 encoder from Google (1.5 GB, public). Always
-pass `--extra lm` to `uv run`, or uv removes KenLM again. `--device mps` tries the Apple GPU
-(untested); the default is the CPU.
+`--device mps` tries the Apple GPU (untested); the default is the CPU. If KenLM fails to build,
+use `uv sync` and `--no-lm`.
+
+## Training
+
+```bash
+uv sync
+uv run python -m norsk_asr.prep eval --out data/eval
+uv run python -m norsk_asr.prep dev --out data/dev       # for tuning the LM only
+uv run python -m norsk_asr.prep train --out data/train --stortinget-shards 10000 --npsc \
+    --lm-text data/lm_text --workers 16
+uv run python -m norsk_asr.train --train-dir data/train --eval-dir data/eval --out runs/full \
+    --epochs 5 --unfreeze-top-k 1 --unfreeze-after 2000 --encoder-lr 1e-5
+uv run python -m norsk_asr.evaluate --ckpt runs/full/best.pt --limit 1000 --out results/full --dump-logprobs
+uv run python -m norsk_asr.baseline --model NbAiLab/nb-whisper-large --limit 1000 --out results/nb-whisper-large
+```
+
+Language model (needs KenLM's `lmplz` and `build_binary` on PATH):
+
+```bash
+uv run --extra lm python -m norsk_asr.lm corpus --out data/lm/ncc.txt --shards 4
+uv run --extra lm python -m norsk_asr.lm build --text data/lm/ncc.txt data/lm_text --out data/lm/no4
+uv run --extra lm python -m norsk_asr.lm tune --units runs/full/units.json --logprobs results/full_dev
+```
+
+`scripts/pod.sh` manages a RunPod GPU pod and `scripts/run_full.sh` / `finish_full.sh` run the
+full recipe on it (about 4 h on one H100).
+
+| Path | What |
+|---|---|
+| `src/norsk_asr/text.py` | normalization used for targets and scoring |
+| `src/norsk_asr/units.py` | character CTC vocabulary (Gemma pieces) |
+| `src/norsk_asr/features.py` | GPU log-mel matching `Gemma4AudioFeatureExtractor` (max diff 2e-5) |
+| `src/norsk_asr/model.py` | encoder + layer mix + reader + head |
+| `src/norsk_asr/prep.py` | download and pack data into int16 PCM shards |
+| `src/norsk_asr/train.py` | training loop, checkpoints (.pt or safetensors) |
+| `src/norsk_asr/evaluate.py` | greedy CTC decoding and WER |
+| `src/norsk_asr/lm.py` | LM corpus, decontamination, KenLM build, beam search tuning |
+| `src/norsk_asr/transcribe.py` | transcribe audio files |
+| `src/norsk_asr/baseline.py` | NB-Whisper on the same sets |
 
 ## Notes
 
@@ -114,3 +116,10 @@ pass `--extra lm` to `uv run`, or uv removes KenLM again. `--device mps` tries t
   attends left, so trailing silence barely changes real frames.
 - Training the top encoder layers against a randomly initialised reader makes their gradients
   overflow within ~10 steps. `--unfreeze-after` keeps them frozen until the reader has warmed up.
+  Unfreezing the top 2 layers was unstable even then.
+
+## License
+
+Code: Apache-2.0 ([LICENSE](LICENSE)). Model weights: Apache-2.0 (derived from EmbeddingGemma 2,
+Apache-2.0). The language model files (`lm/` on the Hub) are CC BY-SA 4.0 because their text
+includes Norwegian Wikipedia (CC BY-SA 3.0); see the model card for data sources and attribution.

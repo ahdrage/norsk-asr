@@ -1,5 +1,5 @@
-"""Fetch a trained model and the language model from the private Hub repo, into the default paths
-that `transcribe` uses (runs/<run>/ and data/lm/). Needs a Hub login with read access (`hf auth login`).
+"""Fetch a trained model and the language model from the Hub repo ahdrage/norsk-asr, into the
+default paths that `transcribe` uses (runs/<run>/ and data/lm/).
 
     uv run python -m norsk_asr.download                 # runs/full_top1 + data/lm/no4
     uv run python -m norsk_asr.download --run pilot_top1 --no-lm
@@ -21,7 +21,7 @@ def main():
     p.add_argument("--root", default=".", help="repo checkout to download into")
     a = p.parse_args()
     root = Path(a.root)
-    files = [(f"runs/{a.run}/{f}", root / "runs" / a.run) for f in ("best.pt", "units.json", "args.json")]
+    files = [(f"runs/{a.run}/{f}", root / "runs" / a.run) for f in ("model.safetensors", "config.json", "units.json", "args.json")]
     if not a.no_lm:
         files += [(f"lm/{a.lm}{ext}", root / "data" / "lm") for ext in (".bin", ".unigrams.txt")]
     for remote, local_dir in files:

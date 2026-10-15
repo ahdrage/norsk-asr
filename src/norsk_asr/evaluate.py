@@ -1,6 +1,6 @@
 """Greedy CTC decoding and WER on the packed eval sets.
 
-    python -m norsk_asr.evaluate --ckpt runs/pilot/best.pt --eval-dir data/eval
+    python -m norsk_asr.evaluate --ckpt runs/full_top1 --eval-dir data/eval    # or a .pt checkpoint
 
 Every set reports WER on all utterances and on the digit-free subset ("wer_nodigit"). The
 digit-free number is the fair one: our model speaks numbers as words ("tjue tjuefem") while

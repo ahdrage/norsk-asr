@@ -45,7 +45,7 @@ Status (17:55 UTC):
 - Pod `0m8gb6jriql1zx` (H100) up since 17:17 UTC. It had a CUDA 12.8 driver, so torch was swapped
   for the cu126 build of the same version (now automatic in `pod.sh setup`).
 - Data packed in 26 min: **1,679.9 h, 373,627 utterances** (Stortinget 636 shards, NST 636 shards,
-  NPSC train 32 days ≈ 100 h). Dropped: 75,706 with digits, 15,895 with whisper_wer > 0.15.
+  NPSC train 32 days: Stortinget 1,337 h, NST 256 h, NPSC 87 h). Dropped: 75,706 with digits, 15,895 with whisper_wer > 0.15.
 - Training `runs/full_top1`: 10,520 steps/epoch, 52,600 steps, 0.83 audio-h/s → about 3 h.
 - Test/train overlap check (sentences of 6+ words found verbatim in training text): NPSC 40/4,771,
   Stortinget 1/697, NST 56/1,494, FLEURS 0/357. The NPSC hits are stock Speaker's phrases
@@ -56,12 +56,12 @@ Status (17:55 UTC):
 LM results (pilot model, 20:15 UTC):
 - `data/lm/no4.bin`: 4-gram, 3- and 4-gram singletons pruned, 406 MB; 8.57 M sentences after
   removing 16,312 that share an 8-gram with eval/dev references and 643,850 duplicates; 918k
-  unigrams. Built on the NUC in ~6 min.
+  unigrams. Built on an 8-core CPU machine in ~6 min.
 - Grid on dev (FLEURS dev + 1,000 NPSC eval-split utts), beam 32: best α=0.5, β=2.0
   (avg 16.5% vs 23.3% greedy). Log: `logs/lm_tune_pilot.log`.
 - On the test sets the LM cuts WER by 28–40% relative (scoreboard).
 
-Plan, approved by the user:
+Plan:
 
 1. **More data.** All 636 Stortinget shards + all NST + NPSC train (Bokmål, 32 days, ~100 h):
    about 1,700 h after filtering, 3.7× the pilot. One run with the pilot_top1 setup, 5 epochs
@@ -70,7 +70,7 @@ Plan, approved by the user:
 2. **Language model.** Word 4-gram KenLM on open Norwegian text (NCC: parliament, government,
    Wikipedia; plus training transcripts), decoded with pyctcdecode. Text sharing any 8-gram with
    a test reference is removed. LM weight is tuned on dev sets (FLEURS dev, NPSC eval split),
-   never on the reported test sets. Built and tuned on the NUC, so it costs no GPU time.
+   never on the reported test sets. Built and tuned on CPU, so it costs no GPU time.
 3. **NPSC training data**: part of step 1.
 
 ## 2026-10-14: pilot
