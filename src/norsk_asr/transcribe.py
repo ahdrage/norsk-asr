@@ -118,9 +118,10 @@ def main():
     p.add_argument("--batch-seconds", type=float, default=300.0)
     p.add_argument("--timestamps", action="store_true", help="one line per piece, prefixed with its time range")
     p.add_argument("--out", help="write the transcript here (one file: this path; several: a directory)")
+    p.add_argument("--device", default="auto", help="auto (CUDA if available, else CPU), cpu, cuda or mps (Apple GPU)")
     a = p.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(("cuda" if torch.cuda.is_available() else "cpu") if a.device == "auto" else a.device)
     t0 = time.time()
     model, units = load_checkpoint(a.ckpt, device)
     decoder = None

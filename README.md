@@ -89,6 +89,24 @@ long audio is cut at quiet points into pieces of at most 25 s. On the NUC's CPU 
 10× real time (a one-hour file in ~6 min); on a GPU the model runs 1,000×+ and beam search
 dominates.
 
+### On a Mac
+
+Apple Silicon and macOS 14+ (torch has no Intel-Mac builds). About 2.4 GB of downloads.
+
+```bash
+xcode-select --install                     # C++ compiler, to build KenLM's Python bindings (once)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+gh repo clone ahdrage/norsk-asr && cd norsk-asr
+uv sync --extra lm
+uv run --extra lm hf auth login            # a Hub token that can read ahdrage/norsk-asr
+uv run --extra lm python -m norsk_asr.download      # model + LM from the Hub (~850 MB)
+uv run --extra lm python -m norsk_asr.transcribe ~/Downloads/opptak.m4a --timestamps
+```
+
+The first run also downloads the EmbeddingGemma 2 encoder from Google (1.5 GB, public). Always
+pass `--extra lm` to `uv run`, or uv removes KenLM again. `--device mps` tries the Apple GPU
+(untested); the default is the CPU.
+
 ## Notes
 
 - Feed the encoder **no padding mask**. Padding is filled with silence instead, because masked
