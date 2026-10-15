@@ -24,6 +24,14 @@ RunPod H100 SXM at $3.99/h. Balance before each step from `scripts/pod.sh balanc
 | 2026-10-14 | (credits added) | | | $46.20 |
 | 2026-10-14 | full round: pack 1,680 h + train full_top1 + evals (pod 17:17–21:07 UTC) | 3.8 h | $15.38 | $30.82 |
 
+## 2026-10-15: public release
+
+- GitHub [ahdrage/norsk-asr](https://github.com/ahdrage/norsk-asr) and Hugging Face
+  [ahdrage/norsk-asr](https://huggingface.co/ahdrage/norsk-asr) made public.
+- Checkpoints published as safetensors (no pickles); model card with data sources, licenses and
+  limitations. Code and weights Apache-2.0; the LM is CC BY-SA 4.0 (it includes Wikipedia text).
+- `norsk_asr.transcribe` and `norsk_asr.download` for testing on real files.
+
 ## 2026-10-14: full round, results
 
 - `full_top1` trained 52,600 steps (5 epochs) with no skipped steps; best checkpoint at the end
