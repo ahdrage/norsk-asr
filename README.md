@@ -73,6 +73,22 @@ uv run python -m norsk_asr.evaluate --ckpt runs/pilot/best.pt --out results/pilo
 uv run python -m norsk_asr.baseline --model NbAiLab/nb-whisper-large --out results/nb-whisper-large
 ```
 
+## Transcribing a file
+
+```bash
+uv sync --extra lm        # KenLM bindings for beam search (needs a C++ compiler)
+uv run --extra lm python -m norsk_asr.transcribe opptak.mp3                    # print the transcript
+uv run --extra lm python -m norsk_asr.transcribe opptak.m4a --timestamps --out opptak.txt
+uv run --extra lm python -m norsk_asr.transcribe *.wav --out transkripsjoner/  # many files
+uv run python -m norsk_asr.transcribe opptak.wav --no-lm                       # greedy, no KenLM
+```
+
+Defaults are `runs/full_top1/best.pt` and the LM `data/lm/no4` (both in the private Hub repo
+`ahdrage/norsk-asr` under `runs/full_top1/` and `lm/`). Any length and any format ffmpeg reads;
+long audio is cut at quiet points into pieces of at most 25 s. On the NUC's CPU it runs at about
+10× real time (a one-hour file in ~6 min); on a GPU the model runs 1,000×+ and beam search
+dominates.
+
 ## Notes
 
 - Feed the encoder **no padding mask**. Padding is filled with silence instead, because masked
