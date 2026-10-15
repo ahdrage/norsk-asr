@@ -1,6 +1,7 @@
 """Where does inference time go? Our CTC model vs NB-Whisper large, same clips, CPU fp32.
 
     uv run --extra lm python scripts/time_split.py
+"""
 
 import json, time, sys
 import numpy as np, torch, torch.nn.functional as F
