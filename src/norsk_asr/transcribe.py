@@ -3,6 +3,7 @@
     uv run --extra lm python -m norsk_asr.transcribe opptak.mp3
     uv run --extra lm python -m norsk_asr.transcribe opptak.m4a --out opptak.txt --timestamps
     uv run python -m norsk_asr.transcribe opptak.wav --no-lm          # greedy, no KenLM needed
+    uv run --extra lm python -m norsk_asr.transcribe intervju.mp3 --preset conversation  # interviews, dialect
 
 Long recordings are cut into pieces of at most --max-seconds (the model was trained on clips of
 30 s or less), each cut placed at the quietest 100 ms in the last few seconds before the limit, so
@@ -25,6 +26,7 @@ import torch
 
 from .data import SR
 from .evaluate import greedy
+from .lm import add_decoding_args, penalize_blank, resolve_decoding
 
 WIN = SR // 10  # 100 ms energy windows for choosing cut points
 
@@ -114,8 +116,7 @@ def main():
     p.add_argument("--ckpt", default="runs/full_top1", help="run directory (model.safetensors + config.json) or a .pt")
     p.add_argument("--lm", default="data/lm/no4", help="KenLM prefix (<lm>.bin + <lm>.unigrams.txt)")
     p.add_argument("--no-lm", action="store_true", help="greedy decoding only")
-    p.add_argument("--alpha", type=float, default=0.6)
-    p.add_argument("--beta", type=float, default=1.0)
+    add_decoding_args(p)
     p.add_argument("--beam", type=int, default=64)
     p.add_argument("--max-seconds", type=float, default=25.0)
     p.add_argument("--batch-seconds", type=float, default=300.0)
@@ -123,6 +124,7 @@ def main():
     p.add_argument("--out", help="write the transcript here (one file: this path; several: a directory)")
     p.add_argument("--device", default="auto", help="auto (CUDA if available, else CPU), cpu, cuda or mps (Apple GPU)")
     a = p.parse_args()
+    resolve_decoding(a)
 
     device = torch.device(("cuda" if torch.cuda.is_available() else "cpu") if a.device == "auto" else a.device)
     t0 = time.time()
@@ -141,7 +143,7 @@ def main():
         t0 = time.time()
         audio = load_audio(path)
         spans = split(audio, a.max_seconds)
-        lps = log_probs(model, audio, spans, device, a.batch_seconds)
+        lps = [penalize_blank(lp, a.blank_penalty) for lp in log_probs(model, audio, spans, device, a.batch_seconds)]
         t_model = time.time() - t0
         if decoder is not None:
             texts = [decoder.decode(lp, beam_width=a.beam) for lp in lps]
