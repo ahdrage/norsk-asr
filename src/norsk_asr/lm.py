@@ -5,10 +5,14 @@
         --out data/lm/no4                                                 # decontaminate + lmplz
     python -m norsk_asr.lm tune --lm data/lm/no4 --logprobs results/x/dev  # alpha/beta grid on dev sets
     python -m norsk_asr.lm decode --lm data/lm/no4 --logprobs results/x --alpha .5 --beta 1
+    python -m norsk_asr.lm decode --lm data/lm/no4 --logprobs results/x --preset conversation
 
 Text is normalized exactly like the ASR targets (lowercase, numbers as words, no punctuation).
 Any LM sentence that shares an 8-gram with an eval or dev reference is dropped, so the LM never
 sees test text. Decoding parameters are tuned on dev sets only.
+
+The "conversation" preset was tuned on spontaneous dialect speech (NB Tale module 3). The blank
+penalty makes the decoder less willing to skip quiet or unclear words.
 
 Needs the `lm` extra (`uv sync --extra lm`) and KenLM's `lmplz` and `build_binary` on PATH.
 """
@@ -30,6 +34,10 @@ NCC_REPO = "NbAiLab/NCC"
 # Bokmål text close to spoken, modern Norwegian. OCR'd newspapers and books are left out.
 NCC_TYPES = re.compile(r"^(parliament|government_nb|publicreports|wikipedia_download_nbo|maalfrid_.*)$")
 NGRAM = 8
+PRESETS = {
+    "default": {"alpha": 0.6, "beta": 1.0, "blank_penalty": 0.0},  # read and parliament speech
+    "conversation": {"alpha": 0.4, "beta": 2.0, "blank_penalty": 1.0},  # spontaneous speech
+}
 SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-ZÆØÅ0-9«\"])|\n+")
 
 
@@ -149,6 +157,34 @@ def ctc_labels(units) -> list[str]:
     return ["", *units.pieces[1:]]
 
 
+def add_decoding_args(p):
+    p.add_argument("--preset", choices=sorted(PRESETS), default="default",
+                   help="'conversation' for spontaneous speech; --alpha/--beta/--blank-penalty override it")
+    p.add_argument("--alpha", type=float)
+    p.add_argument("--beta", type=float)
+    p.add_argument("--blank-penalty", type=float, help="subtracted from the blank log-prob before decoding")
+
+
+def resolve_decoding(a):
+    """Fill --alpha, --beta and --blank-penalty from --preset where not given."""
+    for k, v in PRESETS[a.preset].items():
+        if getattr(a, k) is None:
+            setattr(a, k, v)
+
+
+def penalize_blank(lp: np.ndarray, penalty: float) -> np.ndarray:
+    """Lower the blank log-prob so the decoder drops fewer words. Blank is unit 0."""
+    if not penalty:
+        return lp
+    lp = lp.copy()
+    lp[:, 0] -= penalty
+    return lp
+
+
+def with_blank_penalty(sets: dict, penalty: float) -> dict:
+    return {n: ([penalize_blank(lp, penalty) for lp in lps], refs, digits) for n, (lps, refs, digits) in sets.items()}
+
+
 def load_set(logprobs_dir: Path, name: str) -> tuple[list[np.ndarray], list[str], list[bool]]:
     lps = np.load(logprobs_dir / f"{name}.logprobs.npz")
     rows = [json.loads(line) for line in open(logprobs_dir / f"{name}.jsonl")]
@@ -188,27 +224,31 @@ def cmd_tune(a):
     sets = load_sets(a.logprobs, a.sets)
     print("sets:", {n: len(s[0]) for n, s in sets.items()}, flush=True)
     best = None
-    for alpha in a.alphas:
-        for beta in a.betas:
-            dec = make_decoder(a.lm, ctc_labels(units), alpha, beta)
-            res = scores(sets, decode_sets(dec, sets, a.beam, a.workers))
-            line = {"alpha": alpha, "beta": beta, "avg": round(avg_wer(res), 4), **{n: round(r.get("wer_nodigit", r["wer"]), 4) for n, r in res.items()}}
-            print(json.dumps(line), flush=True)
-            if best is None or line["avg"] < best["avg"]:
-                best = line
+    for bp in a.blank_penalties:
+        penalized = with_blank_penalty(sets, bp)
+        for alpha in a.alphas:
+            for beta in a.betas:
+                dec = make_decoder(a.lm, ctc_labels(units), alpha, beta)
+                res = scores(sets, decode_sets(dec, penalized, a.beam, a.workers))
+                line = {"alpha": alpha, "beta": beta, "blank_penalty": bp, "avg": round(avg_wer(res), 4),
+                        **{n: round(r.get("wer_nodigit", r["wer"]), 4) for n, r in res.items()}}
+                print(json.dumps(line), flush=True)
+                if best is None or line["avg"] < best["avg"]:
+                    best = line
     print("BEST", json.dumps(best), flush=True)
 
 
 def cmd_decode(a):
     from .units import Units
 
+    resolve_decoding(a)
     units = Units.load(a.units)
     sets = load_sets(a.logprobs, a.sets)
     dec = make_decoder(a.lm, ctc_labels(units), a.alpha, a.beta)
     import time
 
     t0 = time.time()
-    hyps = decode_sets(dec, sets, a.beam, a.workers)
+    hyps = decode_sets(dec, with_blank_penalty(sets, a.blank_penalty), a.beam, a.workers)
     res = scores(sets, hyps)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -217,7 +257,8 @@ def cmd_decode(a):
         with open(out / f"{n}.jsonl", "w") as f:
             for (ref, hyp) in zip(sets[n][1], hyps[n]):
                 f.write(json.dumps({"ref": ref, "hyp": hyp}, ensure_ascii=False) + "\n")
-    meta = {"lm": a.lm, "alpha": a.alpha, "beta": a.beta, "beam": a.beam, "decode_seconds": time.time() - t0}
+    meta = {"lm": a.lm, "alpha": a.alpha, "beta": a.beta, "blank_penalty": a.blank_penalty, "beam": a.beam,
+            "decode_seconds": time.time() - t0}
     (out / "summary.json").write_text(json.dumps({"decoding": meta, **res}, indent=1))
 
 
@@ -245,9 +286,9 @@ def main():
     t = sub.choices["tune"]
     t.add_argument("--alphas", type=float, nargs="+", default=[0.3, 0.5, 0.7, 0.9])
     t.add_argument("--betas", type=float, nargs="+", default=[0.0, 1.0, 2.0])
+    t.add_argument("--blank-penalties", type=float, nargs="+", default=[0.0])
     d = sub.choices["decode"]
-    d.add_argument("--alpha", type=float, required=True)
-    d.add_argument("--beta", type=float, required=True)
+    add_decoding_args(d)
     d.add_argument("--out", required=True)
     a = p.parse_args()
     {"corpus": cmd_corpus, "build": cmd_build, "tune": cmd_tune, "decode": cmd_decode}[a.cmd](a)

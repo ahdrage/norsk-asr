@@ -55,6 +55,22 @@ Any length and any format ffmpeg reads (a bundled ffmpeg is used if none is inst
 is cut at quiet points into pieces of at most 25 s. The first run also downloads the
 EmbeddingGemma 2 encoder (1.5 GB). Always pass `--extra lm` to `uv run`, or uv removes KenLM.
 
+### Conversations and dialects
+
+The default settings are tuned for read speech and parliament debates. On interviews, everyday
+conversation and strong dialects they tend to leave out words the model is unsure about. For that
+kind of audio, use the conversation preset:
+
+```bash
+uv run --extra lm python -m norsk_asr.transcribe intervju.mp3 --preset conversation
+```
+
+It trusts the language model a little less, and is less willing to skip quiet or unclear words.
+On spontaneous speech it lowers WER by 6 points on NB Tale's dialect interviews (33.3% → 27.1%) and
+by 2 points on NB Samtale (30.4% → 28.4%). On the read and parliament sets above it is a little
+worse (average 9.7% vs 9.3%), so it is not the default.
+`--alpha`, `--beta` and `--blank-penalty` override the preset.
+
 ### On a Mac
 
 Apple Silicon and macOS 14+ (torch has no Intel-Mac builds).
